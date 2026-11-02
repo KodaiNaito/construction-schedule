@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>工事日程 逆算作成アプリ</title>
+<style>
+:root{--navy:#17365d;--blue:#2563eb;--line:#dbe3ee;--bg:#f3f6fa;--text:#172033;--muted:#64748b;--task:260px;--day:46px}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:1500px;margin:auto;padding:22px}.head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}.eyebrow{font-size:12px;letter-spacing:.16em;font-weight:800;color:var(--blue)}h1{margin:4px 0;font-size:28px}.sub{color:var(--muted);font-size:14px}.badge{background:var(--blue);color:#fff;padding:9px 14px;border-radius:999px;font-weight:700;font-size:13px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 5px 18px #1720330d}.inputs{padding:18px;display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:15px;margin-bottom:16px}label{font-size:13px;font-weight:800}.ctl{display:block;width:100%;margin-top:6px;padding:11px 12px;border:1px solid #b8c5d6;border-radius:10px;background:#fff;font:inherit}.ctl:focus{outline:3px solid #bfdbfe;border-color:var(--blue)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}.stat{padding:16px}.stat small{color:var(--muted);font-weight:700}.stat strong{display:block;font-size:30px;margin-top:4px}.stat .first{font-size:18px;color:#7c3aed}
+.chart-card{overflow:hidden}.toolbar{padding:15px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;align-items:center}.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;font-weight:700}.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}.hint{padding:8px 18px;color:var(--muted);font-size:12px;border-bottom:1px solid var(--line)}
+.scroller{overflow:auto;max-height:70vh}.grid{display:grid;position:relative;min-width:max-content}.cell{border-right:1px solid var(--line);border-bottom:1px solid var(--line);min-height:38px;display:flex;align-items:center;justify-content:center;font-size:11px}.sticky{position:sticky;left:0;z-index:5;background:#fff}.corner{background:var(--navy);color:#fff;font-weight:800;padding:10px;justify-content:flex-start;z-index:10}.month,.week{background:var(--navy);color:#fff;font-weight:800;height:34px}.week{background:#294f7a}.day{height:44px;flex-direction:column;font-weight:800;background:#f8fafc}.day span{font-size:10px;color:var(--muted)}.weekend{background:#eef1f5}.today{box-shadow:inset 3px 0 #ef4444}.task{justify-content:flex-start;padding:6px 10px;min-width:var(--task);max-width:var(--task);font-size:12px;font-weight:700}.task small{display:block;color:var(--muted);font-weight:500;margin-top:2px}.mark{width:30px;height:24px;border-radius:7px;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center}.plan{background:#8b5cf6}.buy{background:#f59e0b}.work{background:#3b82f6}.done{background:#10b981}.empty{min-height:38px}.error{color:#b91c1c;padding:10px 18px;font-size:13px}.footer{color:var(--muted);font-size:12px;padding:14px 2px;text-align:center}
+@media(max-width:760px){.wrap{padding:12px}.head{align-items:flex-start}.badge{display:none}.inputs,.stats{grid-template-columns:1fr}.toolbar{align-items:flex-start;flex-direction:column}:root{--task:190px;--day:42px}h1{font-size:23px}}
+</style>
+</head>
+<body><main class="wrap">
+<header class="head"><div><div class="eyebrow">CONSTRUCTION SCHEDULE</div><h1>工事日程 逆算作成アプリ</h1><div class="sub">工事完了日から必要工程を営業日で逆算し、月・週・日の工程表へ配置</div></div><div class="badge">土日を除いて逆算</div></header>
+<section class="card inputs">
+<label>工事名称<input id="job" class="ctl" value="〇〇設備 更新工事"></label>
+<label>完了日<input id="end" class="ctl" type="date"></label>
+<label>工程テンプレート<select id="type" class="ctl"><option>標準工事</option><option>設備改造</option><option>カメラ・IT工事</option></select></label>
+</section>
+<section class="stats"><div class="card stat"><small>完了日まで</small><strong id="remain">-</strong></div><div class="card stat"><small>必要工程</small><strong id="count">-</strong></div><div class="card stat"><small>最初の着手予定</small><strong class="first" id="first">-</strong></div></section>
+<section class="card chart-card"><div class="toolbar"><div><b id="title">工事日程</b><div class="sub">横スクロールで全体を確認できます</div></div><div class="legend"><span><i style="background:#8b5cf6"></i>計画・調査</span><span><i style="background:#f59e0b"></i>申請・調達</span><span><i style="background:#3b82f6"></i>工事・確認</span><span><i style="background:#10b981"></i>完了</span></div></div><div class="hint">上段から「月 → 週 → 日」。土日はグレー、今日位置は赤線で表示します。</div><div id="error" class="error" aria-live="polite"></div><div class="scroller" id="scroll"><div id="chart" class="grid"></div></div></section>
+<div class="footer">入力内容は端末内でのみ計算され、外部へ送信されません。</div>
+</main>
+<script>
+(()=>{
+const $=s=>document.querySelector(s), DAY=86400000;
+const sets={
+'標準工事':[['構想・やること整理',80,'plan'],['工事内容・責任区分合意',70,'plan'],['仕様書完成・仕様照会',60,'plan'],['現地調査・施工方法確認',50,'plan'],['見積受領・査定',40,'buy'],['発注完了',30,'buy'],['CoDAC・関係部署申請',20,'buy'],['工事届・立入／火気等申請',15,'buy'],['購入品・資材納入確認',10,'buy'],['安全・施工前確認',7,'work'],['工事実施',5,'work'],['工事完了・検収',0,'done'],['効果確認・関係者共有',-3,'done']],
+'設備改造':[['構想・対策案決定',90,'plan'],['能力・サイクル／干渉確認',80,'plan'],['仕様書完成・関係者合意',70,'plan'],['現地調査・回路／配線確認',55,'plan'],['見積受領',45,'buy'],['発注完了',35,'buy'],['CoDAC・工事届・安全申請',20,'buy'],['製作物・購入品納入',15,'buy'],['事前トライ・復帰確認',10,'work'],['設備改造工事',5,'work'],['切替・号口化',0,'done'],['効果確認・運基／工程管理改訂',-5,'done']],
+'カメラ・IT工事':[['構想・システム要件整理',90,'plan'],['仕様書完成・メーカー合意',75,'plan'],['配線経路・設置位置確認',60,'plan'],['見積受領',50,'buy'],['発注完了',40,'buy'],['CoDAC・工事届',30,'buy'],['FW穴あけ・IP・サーバー申請',25,'buy'],['機器納入・事前設定',18,'buy'],['通信・画角・動作確認',12,'work'],['機器設置・配線工事',7,'work'],['正式可動・検収',0,'done'],['安定稼働確認・手順書共有',-5,'done']]
+};
+function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function jp(d){return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()}
+function biz(end,n){let d=new Date(end+'T12:00:00'),dir=n>=0?-1:1,left=Math.abs(n);while(left){d.setDate(d.getDate()+dir);if(d.getDay()!==0&&d.getDay()!==6)left--}return d}
+function monday(d){let x=new Date(d),w=x.getDay()||7;x.setDate(x.getDate()-w+1);return x}
+function groups(days,fn){let out=[],start=0,last=fn(days[0]);for(let i=1;i<=days.length;i++){let now=i<days.length?fn(days[i]):null;if(now!==last){out.push({label:last,start,len:i-start});start=i;last=now}}return out}
+function render(){
+ const ev=$('#end').value,typ=$('#type').value,name=$('#job').value.trim()||'名称未設定';
+ if(!ev){$('#error').textContent='完了日を入力してください。';$('#chart').innerHTML='';return}
+ $('#error').textContent='';const end=new Date(ev+'T12:00:00'),today=new Date();today.setHours(12,0,0,0);const arr=sets[typ];
+ const points=arr.map(x=>({name:x[0],offset:x[1],kind:x[2],date:biz(ev,x[1])}));
+ $('#remain').textContent=Math.ceil((end-today)/DAY)+'日';$('#count').textContent=arr.length+'項目';$('#title').textContent=name;
+ const earliest=new Date(Math.min(...points.map(p=>p.date)));$('#first').textContent=jp(earliest);
+ let start=new Date(earliest);start.setDate(start.getDate()-7);let finish=new Date(Math.max(+end,...points.map(p=>+p.date)));finish.setDate(finish.getDate()+7);
+ let days=[];for(let d=new Date(start);d<=finish;d.setDate(d.getDate()+1))days.push(new Date(d));
+ const cols=`var(--task) repeat(${days.length},var(--day))`,chart=$('#chart');chart.style.gridTemplateColumns=cols;let html='';
+ html+='<div class="cell sticky corner">月</div>';groups(days,d=>d.getFullYear()+'年'+(d.getMonth()+1)+'月').forEach(g=>html+=`<div class="cell month" style="grid-column:span ${g.len}">${g.label}</div>`);
+ html+='<div class="cell sticky corner">週</div>';groups(days,d=>{let m=monday(d);return (m.getMonth()+1)+'/'+m.getDate()+'週'}).forEach(g=>html+=`<div class="cell week" style="grid-column:span ${g.len}">${g.label}</div>`);
+ html+='<div class="cell sticky corner">やること ／ 日</div>';days.forEach(d=>{let wk=d.getDay()==0||d.getDay()==6;html+=`<div class="cell day ${wk?'weekend':''} ${iso(d)==iso(today)?'today':''}">${d.getDate()}<span>${['日','月','火','水','木','金','土'][d.getDay()]}</span></div>`});
+ points.forEach((p,i)=>{html+=`<div class="cell sticky task"><div>${i+1}. ${p.name}<small>${jp(p.date)} ${p.offset===0?'完了日':p.offset>0?'完了 '+p.offset+'営業日前':'完了 '+Math.abs(p.offset)+'営業日後'}</small></div></div>`;days.forEach(d=>{let wk=d.getDay()==0||d.getDay()==6,hit=iso(d)==iso(p.date);html+=`<div class="cell empty ${wk?'weekend':''} ${iso(d)==iso(today)?'today':''}">${hit?`<div class="mark ${p.kind}">●</div>`:''}</div>`})});
+ chart.innerHTML=html;requestAnimationFrame(()=>{let idx=days.findIndex(d=>iso(d)==iso(today));if(idx<0)idx=Math.max(0,days.length-28);$('#scroll').scrollLeft=Math.max(0,idx*46-260)});
+}
+const def=new Date();def.setDate(def.getDate()+149);$('#end').value=iso(def);['input','change'].forEach(e=>{$('#job').addEventListener(e,render);$('#end').addEventListener(e,render);$('#type').addEventListener(e,render)});render();
+})();
+</script></body></html>
